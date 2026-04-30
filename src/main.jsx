@@ -345,6 +345,7 @@ async function decryptState(secret, roomId, payload, keyCache) {
 
 async function fetchRemote(roomId) {
   const response = await fetch(`/api/sync?roomId=${encodeURIComponent(roomId)}`, { method: 'GET' });
+  if (response.status === 404) return null;
   if (!response.ok) throw new Error(`sync pull failed (${response.status})`);
   return response.json();
 }
