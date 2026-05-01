@@ -1552,7 +1552,7 @@ function SubjectHeatmap({ days }) {
         <span
           key={day.date}
           className={`heat-cell level-${day.level}`}
-          title={`${formatDate(day.date)}: ${day.hours.toFixed(1)}h studied`}
+          title={`${formatDate(day.date)}: ${day.hours.toFixed(1)}h studied • ${day.progress}% completed`}
         />
       ))}
     </div>
@@ -2656,10 +2656,12 @@ function buildSubjectHeatmap(subjectId, studyBlocks) {
       .filter((block) => block.subjectId === subjectId && block.date === date)
       .reduce((sum, block) => sum + (block.minutes || 0), 0);
     const hours = minutes / 60;
+    const progress = getStudyProgress(hours, DEFAULT_STUDY_GOAL_HOURS);
     return {
       date,
       hours,
-      level: Math.min(4, Math.ceil((Math.min(hours, 3) / 3) * 4)),
+      progress,
+      level: progress === 0 ? 0 : Math.max(1, Math.ceil(progress / 25)),
     };
   });
 }
