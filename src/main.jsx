@@ -15,6 +15,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   ListChecks,
+  Menu,
   Pencil,
   Plus,
   RefreshCw,
@@ -23,6 +24,7 @@ import {
   Settings,
   Sparkles,
   Upload,
+  X,
 } from 'lucide-react';
 import './styles.css';
 import QRCode from 'qrcode';
@@ -368,6 +370,7 @@ function App() {
   const [calendarOffset, setCalendarOffset] = useState(0);
   const [dashboardWeekOffset, setDashboardWeekOffset] = useState(0);
   const [calendarScheduleBlocks, setCalendarScheduleBlocks] = useState([]);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [scanStatus, setScanStatus] = useState({ loading: false, message: 'Ready to scan combined orientation PDFs.' });
   const [subjectToDelete, setSubjectToDelete] = useState(null);
   const [subjectModal, setSubjectModal] = useState(null);
@@ -484,6 +487,10 @@ function App() {
   React.useEffect(() => {
     setCalendarScheduleBlocks([]);
   }, [calendarMode, calendarOffset]);
+
+  React.useEffect(() => {
+    setMobileNavOpen(false);
+  }, [activeView]);
 
   const updateState = (recipe) => setState((current) => recipe(structuredClone(current)));
 
@@ -725,9 +732,19 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar activeView={activeView} setActiveView={setActiveView} />
+      <Sidebar
+        activeView={activeView}
+        setActiveView={setActiveView}
+        mobileNavOpen={mobileNavOpen}
+        setMobileNavOpen={setMobileNavOpen}
+      />
       <main className="main">
-        <Topbar activeView={activeView} tasks={state.tasks} />
+        <Topbar
+          activeView={activeView}
+          tasks={state.tasks}
+          mobileNavOpen={mobileNavOpen}
+          setMobileNavOpen={setMobileNavOpen}
+        />
         {activeView === 'Dashboard' && (
           <Dashboard
             data={dashboardData}
@@ -828,7 +845,7 @@ function App() {
   );
 }
 
-function Sidebar({ activeView, setActiveView }) {
+function Sidebar({ activeView, setActiveView, mobileNavOpen, setMobileNavOpen }) {
   const items = [
     ['Dashboard', LayoutDashboard],
     ['Subjects', BookOpen],
@@ -838,7 +855,7 @@ function Sidebar({ activeView, setActiveView }) {
     ['Settings', Settings],
   ];
   return (
-    <aside className="sidebar">
+    <aside className={mobileNavOpen ? 'sidebar mobile-open' : 'sidebar'}>
       <button className="brand" onClick={() => setActiveView('Dashboard')} aria-label="Go to StudyFlow dashboard">
         <div className="brand-mark"><GraduationCap size={24} /></div>
         <div>
@@ -846,7 +863,15 @@ function Sidebar({ activeView, setActiveView }) {
           <span>Student planner</span>
         </div>
       </button>
-      <nav>
+      <button
+        className="mobile-nav-close"
+        type="button"
+        onClick={() => setMobileNavOpen(false)}
+        aria-label="Close navigation menu"
+      >
+        <X size={18} />
+      </button>
+      <nav className={mobileNavOpen ? 'sidebar-nav mobile-open' : 'sidebar-nav'}>
         {items.map(([label, Icon]) => (
           <button
             className={activeView === label ? 'nav-item active' : 'nav-item'}
@@ -866,10 +891,19 @@ function Sidebar({ activeView, setActiveView }) {
   );
 }
 
-function Topbar({ activeView, tasks }) {
+function Topbar({ activeView, tasks, mobileNavOpen, setMobileNavOpen }) {
   const done = tasks.filter((task) => task.status === 'Done').length;
   return (
     <header className="topbar">
+      <button
+        className="mobile-menu-button"
+        type="button"
+        onClick={() => setMobileNavOpen((current) => !current)}
+        aria-label={mobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-expanded={mobileNavOpen}
+      >
+        {mobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+      </button>
       <div>
         <p className="eyebrow">Personal study command center</p>
         <h1>{activeView}</h1>

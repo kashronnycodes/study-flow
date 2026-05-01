@@ -140,6 +140,15 @@ nav {
   gap: 7px;
 }
 
+.sidebar-nav {
+  display: grid;
+  gap: 7px;
+}
+
+.sidebar > nav:not(.sidebar-nav) {
+  display: none;
+}
+
 .nav-item {
   border: 1px solid transparent;
   background: transparent;
@@ -196,6 +205,26 @@ nav {
   background: linear-gradient(180deg, rgba(10, 10, 10, 0.86), rgba(10, 10, 10, 0.58));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+
+.mobile-menu-button,
+.mobile-nav-close {
+  display: none;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  align-items: center;
+  justify-content: center;
+  transition: transform 220ms ease, background 220ms ease, border-color 220ms ease;
+}
+
+.mobile-menu-button:hover,
+.mobile-nav-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .topbar h1,
@@ -1647,7 +1676,7 @@ select:disabled {
     gap: 14px;
   }
 
-  .sidebar nav {
+  .sidebar-nav {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
@@ -1686,11 +1715,49 @@ select:disabled {
 }
 
 @media (max-width: 700px) {
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(310px, calc(100vw - 28px));
+    height: 100vh;
+    transform: translateX(-108%);
+    transition: transform 220ms ease-in-out;
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.52);
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-nav {
+    display: none;
+  }
+
+  .sidebar.mobile-open .sidebar-nav {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-note {
+    display: none;
+  }
+
   .topbar {
     align-items: stretch;
     flex-direction: column;
     margin-inline: 0;
     padding-inline: 0;
+  }
+
+  .mobile-menu-button,
+  .mobile-nav-close {
+    display: inline-flex;
+  }
+
+  .mobile-nav-close {
+    position: absolute;
+    top: 14px;
+    right: 18px;
   }
 
   .topbar h1 {
@@ -1701,7 +1768,6 @@ select:disabled {
     min-width: 0;
   }
 
-  .sidebar nav,
   .form-grid,
   .subject-grid,
   .subject-grid.compact {
