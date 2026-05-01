@@ -376,6 +376,7 @@ function App() {
   const [subjectToDelete, setSubjectToDelete] = useState(null);
   const [subjectModal, setSubjectModal] = useState(null);
   const [studyDurationModal, setStudyDurationModal] = useState(null);
+  const [progressResetTarget, setProgressResetTarget] = useState(null);
   const [syncConfig, setSyncConfig] = useState(initSyncConfig);
   const [syncRuntime, setSyncRuntime] = useState({ busy: false, error: null });
   const applyingRemoteRef = useRef(false);
@@ -649,13 +650,13 @@ function App() {
     });
   };
 
-  const logStudyTime = (subjectId, minutes) => {
+  const logStudyTime = (subjectId, minutes, date = todayISO()) => {
     updateState((draft) => {
       const subject = draft.subjects.find((item) => item.id === subjectId);
       if (!subject) return draft;
       draft.studyBlocks.push({
         id: crypto.randomUUID(),
-        date: todayISO(),
+        date,
         subjectId,
         title: `Logged study time for ${subject.name}`,
         kind: 'Study Log',
@@ -693,9 +694,37 @@ function App() {
     const minutes = parseStudyDurationToMinutes(hours);
     if (!studyDurationModal || !Number.isFinite(minutes) || minutes <= 0) return;
     const boundedMinutes = Math.min(24 * 60, minutes);
-    logStudyTime(studyDurationModal.subject.id, Math.round(boundedMinutes));
+    logStudyTime(
+      studyDurationModal.subject.id,
+      Math.round(boundedMinutes),
+      getStudyLogDateForWeek(studyDurationModal.weekStart),
+    );
     toggleWeeklyStudyCheck(studyDurationModal.subject.id, studyDurationModal.weekStart, studyDurationModal.field, true);
     setStudyDurationModal(null);
+  };
+
+  const clearSubjectWeeklyProgress = (subjectId, weekStart = getWeekStart(todayISO())) => {
+    const subject = state.subjects.find((item) => item.id === subjectId);
+    if (!subject) return;
+    setProgressResetTarget({ ...subject, weekStart });
+  };
+
+  const confirmClearSubjectWeeklyProgress = () => {
+    if (!progressResetTarget) return;
+    const weekStart = progressResetTarget.weekStart || getWeekStart(todayISO());
+    const weekEnd = addDays(weekStart, 6);
+    updateState((draft) => {
+      draft.studyBlocks = draft.studyBlocks.filter(
+        (block) => !(block.subjectId === progressResetTarget.id && block.date >= weekStart && block.date <= weekEnd),
+      );
+      draft.weeklyStudyChecks = (draft.weeklyStudyChecks || []).map((item) => (
+        item.subjectId === progressResetTarget.id && item.weekStart === weekStart
+          ? { ...item, studiedDone: false, tasksChecked: false }
+          : item
+      ));
+      return draft;
+    });
+    setProgressResetTarget(null);
   };
 
   const deleteSubject = (subjectId) => {
@@ -762,6 +791,7 @@ function App() {
             logStudyTime={logStudyTime}
             toggleWeeklyStudyCheck={toggleWeeklyStudyCheck}
             openStudyDurationModal={openStudyDurationModal}
+            clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
           />
         )}
         {activeView === 'Subjects' && (
@@ -774,6 +804,7 @@ function App() {
             setActiveView={setActiveView}
             renameSubject={renameSubject}
             deleteSubject={deleteSubject}
+            clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
           />
         )}
         {activeView === 'Calendar' && (
@@ -833,6 +864,13 @@ function App() {
           subject={subjectModal === 'new' ? null : subjectModal}
           onClose={() => setSubjectModal(null)}
           onSave={saveSubject}
+        />
+      ) : null}
+      {progressResetTarget ? (
+        <ProgressResetModal
+          subject={progressResetTarget}
+          onCancel={() => setProgressResetTarget(null)}
+          onConfirm={confirmClearSubjectWeeklyProgress}
         />
       ) : null}
       {studyDurationModal ? (
@@ -991,6 +1029,24 @@ function StudyDurationModal({ subject, session, onCancel, onSave }) {
   );
 }
 
+function ProgressResetModal({ subject, onCancel, onConfirm }) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="reset-progress-title">
+        <div className="modal-icon"><RefreshCw size={20} /></div>
+        <h2 id="reset-progress-title">Are you sure you want to restart your progress cuz? you did so much :(</h2>
+        <p>
+          This will clear this week&apos;s logged study hours and session checks for <strong>{subject.name}</strong>.
+        </p>
+        <div className="modal-actions">
+          <button className="modal-cancel" onClick={onCancel}>Cancel</button>
+          <button className="modal-delete" onClick={onConfirm}>Reset progress</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({
   data,
   subjectsById,
@@ -1005,6 +1061,7 @@ function Dashboard({
   logStudyTime,
   toggleWeeklyStudyCheck,
   openStudyDurationModal,
+  clearSubjectWeeklyProgress,
 }) {
   return (
     <section className="dashboard-grid">
@@ -1036,11 +1093,12 @@ function Dashboard({
           subjects={subjects}
           hours={data.weeklyHours}
           checks={data.weeklyStudyChecks}
-            weekStart={data.weekStart}
-            logStudyTime={logStudyTime}
-            toggleWeeklyStudyCheck={toggleWeeklyStudyCheck}
-            openStudyDurationModal={openStudyDurationModal}
-          />
+          weekStart={data.weekStart}
+          logStudyTime={logStudyTime}
+          toggleWeeklyStudyCheck={toggleWeeklyStudyCheck}
+          openStudyDurationModal={openStudyDurationModal}
+          clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
+        />
       </Panel>
       <Panel className="today-panel">
         <div className="panel-title-row">
@@ -1220,12 +1278,13 @@ function WeeklyFocus({ data, subjects, subjectsById, addWeeklyFocusSubject, dele
   );
 }
 
-function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal }) {
+function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal, clearSubjectWeeklyProgress }) {
   const hoursBySubject = Object.fromEntries(hours.map((item) => [item.subject.id, item.hours]));
   const checksBySubject = Object.fromEntries(checks.map((item) => [item.subjectId, item]));
   return (
     <div className="hours-list">
       <div className="hour-row hour-row-header" aria-hidden="true">
+        <span />
         <span />
         <span />
         <span>Study session 1</span>
@@ -1242,6 +1301,7 @@ function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyChe
             weekStart={weekStart}
             toggleWeeklyStudyCheck={toggleWeeklyStudyCheck}
             openStudyDurationModal={openStudyDurationModal}
+            clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
           />
         );
       })}
@@ -1249,7 +1309,7 @@ function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyChe
   );
 }
 
-function HourLogCard({ subject, hours, check, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal }) {
+function HourLogCard({ subject, hours, check, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal, clearSubjectWeeklyProgress }) {
   const handleSessionToggle = (field, checked) => {
     if (checked) {
       openStudyDurationModal(subject.id, weekStart, field);
@@ -1269,6 +1329,15 @@ function HourLogCard({ subject, hours, check, weekStart, toggleWeeklyStudyCheck,
         <span>{hours.toFixed(1)} / {DEFAULT_STUDY_GOAL_HOURS} hours studied</span>
         <small>{progress}% completed</small>
       </div>
+      <button
+        type="button"
+        className="icon-mini reset-progress-icon"
+        onClick={() => clearSubjectWeeklyProgress(subject.id, weekStart)}
+        title={`Reset ${subject.name} progress`}
+        aria-label={`Reset ${subject.name} progress`}
+      >
+        <RefreshCw size={14} />
+      </button>
       <div className="weekly-row-checks">
         <label>
           <input
@@ -1294,7 +1363,7 @@ function HourLogCard({ subject, hours, check, weekStart, toggleWeeklyStudyCheck,
   );
 }
 
-function Subjects({ subjects, tasks, addTopic, studyBlocks, openSubjectModal, setActiveView, deleteSubject }) {
+function Subjects({ subjects, tasks, addTopic, studyBlocks, openSubjectModal, setActiveView, deleteSubject, clearSubjectWeeklyProgress }) {
   const groupedSubjects = groupSubjectsByType(subjects);
   return (
     <section className="content-stack">
@@ -1335,6 +1404,7 @@ function Subjects({ subjects, tasks, addTopic, studyBlocks, openSubjectModal, se
             studyBlocks={studyBlocks}
             openSubjectModal={openSubjectModal}
             deleteSubject={deleteSubject}
+            clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
           />
           <SubjectGroup
             title="Minor Subjects"
@@ -1344,6 +1414,7 @@ function Subjects({ subjects, tasks, addTopic, studyBlocks, openSubjectModal, se
             studyBlocks={studyBlocks}
             openSubjectModal={openSubjectModal}
             deleteSubject={deleteSubject}
+            clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
           />
           {groupedSubjects.other.length ? (
             <SubjectGroup
@@ -1354,6 +1425,7 @@ function Subjects({ subjects, tasks, addTopic, studyBlocks, openSubjectModal, se
               studyBlocks={studyBlocks}
               openSubjectModal={openSubjectModal}
               deleteSubject={deleteSubject}
+              clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
             />
           ) : null}
         </>
@@ -1362,7 +1434,7 @@ function Subjects({ subjects, tasks, addTopic, studyBlocks, openSubjectModal, se
   );
 }
 
-function SubjectGroup({ title, subjects, tasks, addTopic, studyBlocks, openSubjectModal, deleteSubject }) {
+function SubjectGroup({ title, subjects, tasks, addTopic, studyBlocks, openSubjectModal, deleteSubject, clearSubjectWeeklyProgress }) {
   if (!subjects.length) return null;
   return (
     <section className="subject-section">
@@ -1385,6 +1457,7 @@ function SubjectGroup({ title, subjects, tasks, addTopic, studyBlocks, openSubje
               openSubjectModal={openSubjectModal}
               deleteSubject={deleteSubject}
               studyBlocks={studyBlocks}
+              clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
             />
           );
         })}
@@ -1393,9 +1466,11 @@ function SubjectGroup({ title, subjects, tasks, addTopic, studyBlocks, openSubje
   );
 }
 
-function SubjectCard({ subject, subjectTasks, done, addTopic, openSubjectModal, deleteSubject, studyBlocks }) {
+function SubjectCard({ subject, subjectTasks, done, addTopic, openSubjectModal, deleteSubject, studyBlocks, clearSubjectWeeklyProgress }) {
   const heatmap = buildSubjectHeatmap(subject.id, studyBlocks);
   const totalHours = heatmap.reduce((sum, day) => sum + day.hours, 0);
+  const weeklyHours = getSubjectWeeklyHours(subject.id, studyBlocks);
+  const weeklyProgress = getStudyProgress(weeklyHours, DEFAULT_STUDY_GOAL_HOURS);
   const displayDescription = cleanSubjectDescription(subject.description);
   return (
     <Panel className="subject-card">
@@ -1406,6 +1481,15 @@ function SubjectCard({ subject, subjectTasks, done, addTopic, openSubjectModal, 
           <p>{displayDescription || 'No description yet'}</p>
         </div>
         <div className="subject-actions">
+          <button
+            type="button"
+            className="icon-mini reset-progress-icon"
+            onClick={() => clearSubjectWeeklyProgress(subject.id, getWeekStart(todayISO()))}
+            title={`Reset ${subject.name} progress`}
+            aria-label={`Reset ${subject.name} progress`}
+          >
+            <RefreshCw size={14} />
+          </button>
           <button type="button" className="icon-mini" onClick={() => openSubjectModal(subject)} title="Edit subject" aria-label={`Edit ${subject.name}`}>
             <Pencil size={15} />
           </button>
@@ -1417,6 +1501,13 @@ function SubjectCard({ subject, subjectTasks, done, addTopic, openSubjectModal, 
       <div className="stat-row">
         <span>{done}/{subjectTasks.length || 1} tasks done</span>
         <span>{totalHours.toFixed(1)}h logged</span>
+      </div>
+      <div className="subject-progress-row">
+        <span>{weeklyHours.toFixed(1)} / {DEFAULT_STUDY_GOAL_HOURS} hours studied</span>
+        <small>{weeklyProgress}% completed</small>
+      </div>
+      <div className="progress-track">
+        <div style={{ width: `${weeklyProgress}%`, background: subject.color }} />
       </div>
       <SubjectHeatmap days={heatmap} />
       <h3>Topics</h3>
@@ -2329,6 +2420,13 @@ function getStudyProgress(hoursStudied, studyGoalHours = DEFAULT_STUDY_GOAL_HOUR
   return Math.max(0, Math.min(100, Math.round((normalizedHours / normalizedGoal) * 100)));
 }
 
+function getStudyLogDateForWeek(weekStart) {
+  if (!weekStart) return todayISO();
+  const thisWeekStart = getWeekStart(todayISO());
+  if (weekStart === thisWeekStart) return todayISO();
+  return weekStart;
+}
+
 function findOrCreateSubject(draft, subjectInfo, colors) {
   const existing = draft.subjects.find(
     (subject) =>
@@ -2546,6 +2644,15 @@ function buildSubjectHeatmap(subjectId, studyBlocks) {
       level: Math.min(4, Math.ceil((Math.min(hours, 3) / 3) * 4)),
     };
   });
+}
+
+function getSubjectWeeklyHours(subjectId, studyBlocks) {
+  const weekStart = getWeekStart(todayISO());
+  const weekEnd = addDays(weekStart, 6);
+  const minutes = studyBlocks
+    .filter((block) => block.subjectId === subjectId && block.date >= weekStart && block.date <= weekEnd)
+    .reduce((sum, block) => sum + (block.minutes || 0), 0);
+  return minutes / 60;
 }
 
 function groupSubjectsByType(subjects) {
