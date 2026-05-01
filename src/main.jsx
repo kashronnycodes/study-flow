@@ -689,9 +689,10 @@ function App() {
   };
 
   const saveStudyDuration = (hours) => {
-    const parsed = Number(hours);
-    if (!studyDurationModal || !Number.isFinite(parsed) || parsed <= 0) return;
-    logStudyTime(studyDurationModal.subject.id, Math.round(parsed * 60));
+    const minutes = parseStudyDurationToMinutes(hours);
+    if (!studyDurationModal || !Number.isFinite(minutes) || minutes <= 0) return;
+    const boundedMinutes = Math.min(24 * 60, minutes);
+    logStudyTime(studyDurationModal.subject.id, Math.round(boundedMinutes));
     toggleWeeklyStudyCheck(studyDurationModal.subject.id, studyDurationModal.weekStart, studyDurationModal.field, true);
     setStudyDurationModal(null);
   };
@@ -936,6 +937,7 @@ function ConfirmModal({ subject, onCancel, onConfirm }) {
 
 function StudyDurationModal({ subject, session, onCancel, onSave }) {
   const [hours, setHours] = useState('');
+  const quickFill = (value) => setHours(String(value));
   const submit = (event) => {
     event.preventDefault();
     onSave(hours);
@@ -951,16 +953,22 @@ function StudyDurationModal({ subject, session, onCancel, onSave }) {
         <label className="duration-field">
           Hours studied
           <input
-            type="number"
-            min="0.1"
-            step="0.25"
+            type="text"
             value={hours}
             onChange={(event) => setHours(event.target.value)}
-            placeholder="Example: 1.5"
+            placeholder="1, 1.5, or 30m"
             autoFocus
             required
           />
         </label>
+        <p className="duration-helper">Enter hours directly. `1` means 1 hour. `1.5` means 1 hour 30 minutes. Add `m` for minutes like `30m`.</p>
+        <div className="duration-presets">
+          {['30m', 1, 1.5, 2].map((value) => (
+            <button key={value} type="button" className="text-button" onClick={() => quickFill(value)}>
+              {typeof value === 'string' ? value : `${value}h`}
+            </button>
+          ))}
+        </div>
         <div className="modal-actions">
           <button type="button" className="modal-cancel" onClick={onCancel}>Cancel</button>
           <button className="modal-delete" type="submit">Save session</button>
@@ -2280,6 +2288,22 @@ function safeISODate(year, month, day) {
 
 function normalizeYear(year) {
   return year < 100 ? 2000 + year : year;
+}
+
+function parseStudyDurationToMinutes(value) {
+  const normalized = String(value ?? '').trim().toLowerCase().replace(',', '.');
+  if (!normalized) return 0;
+  const minutesMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*m$/);
+  if (minutesMatch) {
+    const minutes = Number(minutesMatch[1]);
+    return Number.isFinite(minutes) && minutes >= 0 ? minutes : NaN;
+  }
+  const hoursMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*h?$/);
+  if (hoursMatch) {
+    const hours = Number(hoursMatch[1]);
+    return Number.isFinite(hours) && hours >= 0 ? hours * 60 : NaN;
+  }
+  return NaN;
 }
 
 function findOrCreateSubject(draft, subjectInfo, colors) {
