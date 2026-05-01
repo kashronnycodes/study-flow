@@ -34,6 +34,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 const STORAGE_KEY = 'studyflow-state-v1';
 const SYNC_STORAGE_KEY = 'studyflow-sync-v1';
 const AUTO_SUBJECT = '__auto__';
+const DEFAULT_STUDY_GOAL_HOURS = 5;
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const addDays = (date, days) => {
@@ -938,6 +939,9 @@ function ConfirmModal({ subject, onCancel, onConfirm }) {
 function StudyDurationModal({ subject, session, onCancel, onSave }) {
   const [hours, setHours] = useState('');
   const quickFill = (value) => setHours(String(value));
+  const previewMinutes = parseStudyDurationToMinutes(hours);
+  const previewHours = Number.isFinite(previewMinutes) && previewMinutes > 0 ? previewMinutes / 60 : 0;
+  const previewProgress = getStudyProgress(previewHours, DEFAULT_STUDY_GOAL_HOURS);
   const submit = (event) => {
     event.preventDefault();
     onSave(hours);
@@ -962,6 +966,15 @@ function StudyDurationModal({ subject, session, onCancel, onSave }) {
           />
         </label>
         <p className="duration-helper">Enter hours directly. `1` means 1 hour. `1.5` means 1 hour 30 minutes. Add `m` for minutes like `30m`.</p>
+        <div className="duration-progress">
+          <div className="progress-track">
+            <div style={{ width: `${previewProgress}%`, background: subject.color }} />
+          </div>
+          <div className="duration-progress-copy">
+            <span>{previewHours.toFixed(1)} / {DEFAULT_STUDY_GOAL_HOURS} hours studied</span>
+            <small>{previewProgress}% completed</small>
+          </div>
+        </div>
         <div className="duration-presets">
           {['30m', 1, 1.5, 2].map((value) => (
             <button key={value} type="button" className="text-button" onClick={() => quickFill(value)}>
@@ -1210,7 +1223,6 @@ function WeeklyFocus({ data, subjects, subjectsById, addWeeklyFocusSubject, dele
 function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal }) {
   const hoursBySubject = Object.fromEntries(hours.map((item) => [item.subject.id, item.hours]));
   const checksBySubject = Object.fromEntries(checks.map((item) => [item.subjectId, item]));
-  const maxHours = Math.max(...hours.map((item) => item.hours), 1);
   return (
     <div className="hours-list">
       <div className="hour-row hour-row-header" aria-hidden="true">
@@ -1226,7 +1238,6 @@ function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyChe
             key={subject.id}
             subject={subject}
             hours={subjectHours}
-            maxHours={maxHours}
             check={checksBySubject[subject.id]}
             weekStart={weekStart}
             toggleWeeklyStudyCheck={toggleWeeklyStudyCheck}
@@ -1238,7 +1249,7 @@ function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyChe
   );
 }
 
-function HourLogCard({ subject, hours, maxHours, check, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal }) {
+function HourLogCard({ subject, hours, check, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal }) {
   const handleSessionToggle = (field, checked) => {
     if (checked) {
       openStudyDurationModal(subject.id, weekStart, field);
@@ -1246,6 +1257,7 @@ function HourLogCard({ subject, hours, maxHours, check, weekStart, toggleWeeklyS
       toggleWeeklyStudyCheck(subject.id, weekStart, field, false);
     }
   };
+  const progress = getStudyProgress(hours, DEFAULT_STUDY_GOAL_HOURS);
 
   return (
     <div className="hour-row">
@@ -1253,7 +1265,10 @@ function HourLogCard({ subject, hours, maxHours, check, weekStart, toggleWeeklyS
         <span className="subject-dot small" style={{ background: subject.color }} />
         <strong>{subject.name}</strong>
       </div>
-      <span>{hours.toFixed(1)}h</span>
+      <div className="hour-progress-copy">
+        <span>{hours.toFixed(1)} / {DEFAULT_STUDY_GOAL_HOURS} hours studied</span>
+        <small>{progress}% completed</small>
+      </div>
       <div className="weekly-row-checks">
         <label>
           <input
@@ -1273,7 +1288,7 @@ function HourLogCard({ subject, hours, maxHours, check, weekStart, toggleWeeklyS
         </label>
       </div>
       <div className="progress-track">
-        <div style={{ width: `${hours ? Math.max(7, (hours / maxHours) * 100) : 0}%`, background: subject.color }} />
+        <div style={{ width: `${progress}%`, background: subject.color }} />
       </div>
     </div>
   );
@@ -2304,6 +2319,14 @@ function parseStudyDurationToMinutes(value) {
     return Number.isFinite(hours) && hours >= 0 ? hours * 60 : NaN;
   }
   return NaN;
+}
+
+function getStudyProgress(hoursStudied, studyGoalHours = DEFAULT_STUDY_GOAL_HOURS) {
+  const safeHours = Number.parseFloat(hoursStudied);
+  const safeGoal = Number.parseFloat(studyGoalHours);
+  const normalizedHours = Number.isFinite(safeHours) && safeHours > 0 ? safeHours : 0;
+  const normalizedGoal = Number.isFinite(safeGoal) && safeGoal > 0 ? safeGoal : DEFAULT_STUDY_GOAL_HOURS;
+  return Math.max(0, Math.min(100, Math.round((normalizedHours / normalizedGoal) * 100)));
 }
 
 function findOrCreateSubject(draft, subjectInfo, colors) {
