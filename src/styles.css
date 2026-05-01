@@ -341,6 +341,28 @@ p {
   letter-spacing: 0;
 }
 
+.newcomer-card {
+  display: grid;
+  gap: 12px;
+  place-items: center;
+  text-align: center;
+}
+
+.newcomer-card h2 {
+  max-width: 18ch;
+}
+
+.newcomer-card p {
+  max-width: 58ch;
+}
+
+.newcomer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
 .primary-button,
 .text-button,
 .ghost-button,
@@ -1903,18 +1925,22 @@ select:disabled {
   }
 
   .hour-row {
-    grid-template-columns: 1fr auto;
-  }
-
-  .hour-input-row,
-  .weekly-row-checks {
-    grid-column: 1 / -1;
-    justify-self: stretch;
-    justify-content: flex-start;
-  }
-
-  .hour-input-row {
     grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .hour-progress-copy,
+  .weekly-row-checks,
+  .hour-row .progress-track {
+    grid-column: 1 / -1;
+  }
+
+  .hour-progress-copy {
+    text-align: left;
+  }
+
+  .reset-progress-icon {
+    justify-self: end;
   }
 
   .hour-row-header {
@@ -1924,6 +1950,23 @@ select:disabled {
   .weekly-row-checks {
     display: flex;
     gap: 10px;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .weekly-row-checks label {
+    justify-self: flex-start;
+  }
+
+  .duration-progress-copy,
+  .subject-progress-row,
+  .newcomer-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .subject-progress-row {
+    gap: 4px;
   }
 
   .modal-actions {

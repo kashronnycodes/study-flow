@@ -1063,8 +1063,26 @@ function Dashboard({
   openStudyDurationModal,
   clearSubjectWeeklyProgress,
 }) {
+  const showStarterCard = isUsingSampleData(subjects, tasks);
   return (
     <section className="dashboard-grid">
+      {showStarterCard ? (
+        <Panel className="wide newcomer-card">
+          <p className="eyebrow">New here</p>
+          <h2>Hey cuzzo, you&apos;re still on the sample setup.</h2>
+          <p className="muted">Open Settings to reset the local browser data, then head to Subjects so you can add your own classes and start fresh.</p>
+          <div className="newcomer-actions">
+            <button className="primary-button" onClick={() => setActiveView('Settings')}>
+              <RefreshCw size={17} />
+              Open Settings
+            </button>
+            <button className="text-button" onClick={() => setActiveView('Subjects')}>
+              <BookOpen size={17} />
+              Go to Subjects
+            </button>
+          </div>
+        </Panel>
+      ) : null}
       <Panel className="hours-panel">
         <div className="panel-title-row">
           <div>
@@ -2653,6 +2671,14 @@ function getSubjectWeeklyHours(subjectId, studyBlocks) {
     .filter((block) => block.subjectId === subjectId && block.date >= weekStart && block.date <= weekEnd)
     .reduce((sum, block) => sum + (block.minutes || 0), 0);
   return minutes / 60;
+}
+
+function isUsingSampleData(subjects, tasks) {
+  const sampleSubjectIds = ['bio', 'calc', 'hist', 'web'];
+  const sampleTaskIds = ['task-1', 'task-2', 'task-3', 'task-4'];
+  const subjectMatches = sampleSubjectIds.every((id) => subjects.some((subject) => subject.id === id));
+  const taskMatches = sampleTaskIds.every((id) => tasks.some((task) => task.id === id));
+  return subjectMatches && taskMatches;
 }
 
 function groupSubjectsByType(subjects) {
