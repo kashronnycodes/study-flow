@@ -4,6 +4,7 @@ import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { createWorker } from 'tesseract.js';
 import {
+  Bold,
   BookOpen,
   CalendarDays,
   CheckCircle2,
@@ -13,6 +14,7 @@ import {
   FileText,
   Gauge,
   GraduationCap,
+  Italic,
   LayoutDashboard,
   ListChecks,
   Menu,
@@ -23,6 +25,8 @@ import {
   Search,
   Settings,
   Sparkles,
+  Type,
+  Underline,
   Upload,
   X,
 } from 'lucide-react';
@@ -160,6 +164,24 @@ const sampleState = {
     { id: 'check-bio', subjectId: 'bio', weekStart: getWeekStart(todayISO()), studiedDone: true, tasksChecked: false },
     { id: 'check-calc', subjectId: 'calc', weekStart: getWeekStart(todayISO()), studiedDone: false, tasksChecked: false },
   ],
+  subjectDailyNotes: [
+    {
+      id: 'subject-note-bio-today',
+      date: todayISO(),
+      subjectId: 'bio',
+      studied: 'Reviewed cell transport and membrane proteins.',
+      accomplished: 'Finished the first half of the seatwork.',
+      focusNext: 'Practice diffusion vs osmosis examples.',
+    },
+  ],
+  dailyJournal: [
+    {
+      id: 'daily-note-today',
+      date: todayISO(),
+      title: 'Sunday reset and catch-up',
+      note: 'Good start today. Need to keep the momentum and avoid multitasking too much.',
+    },
+  ],
 };
 
 function loadInitialState() {
@@ -189,6 +211,11 @@ function normalizeState(saved) {
     weeklyStudyChecks: (saved.weeklyStudyChecks || sampleState.weeklyStudyChecks).map((item) => ({
       studiedDone: Boolean(item.studied ?? item.studiedDone),
       tasksChecked: false,
+      ...item,
+    })),
+    subjectDailyNotes: saved.subjectDailyNotes || sampleState.subjectDailyNotes,
+    dailyJournal: (saved.dailyJournal || sampleState.dailyJournal).map((item) => ({
+      title: item.title || `Journal for ${formatLongDate(item.date)}`,
       ...item,
     })),
   };
@@ -699,14 +726,77 @@ function App() {
       Math.round(boundedMinutes),
       getStudyLogDateForWeek(studyDurationModal.weekStart),
     );
-    toggleWeeklyStudyCheck(studyDurationModal.subject.id, studyDurationModal.weekStart, studyDurationModal.field, true);
+    if (studyDurationModal.field) {
+      toggleWeeklyStudyCheck(studyDurationModal.subject.id, studyDurationModal.weekStart, studyDurationModal.field, true);
+    }
     setStudyDurationModal(null);
+  };
+
+  const addExtraStudyHours = (subjectId, weekStart) => {
+    const subject = state.subjects.find((item) => item.id === subjectId);
+    if (subject) setStudyDurationModal({ subject, weekStart, field: null, mode: 'extra' });
   };
 
   const clearSubjectWeeklyProgress = (subjectId, weekStart = getWeekStart(todayISO())) => {
     const subject = state.subjects.find((item) => item.id === subjectId);
     if (!subject) return;
     setProgressResetTarget({ ...subject, weekStart });
+  };
+
+  const updateSubjectDailyNote = (date, subjectId, field, value) => {
+    updateState((draft) => {
+      draft.subjectDailyNotes = draft.subjectDailyNotes || [];
+      const existing = draft.subjectDailyNotes.find((item) => item.date === date && item.subjectId === subjectId);
+      if (existing) {
+        existing[field] = value;
+      } else {
+        draft.subjectDailyNotes.push({
+          id: crypto.randomUUID(),
+          date,
+          subjectId,
+          studied: field === 'studied' ? value : '',
+          accomplished: field === 'accomplished' ? value : '',
+          focusNext: field === 'focusNext' ? value : '',
+        });
+      }
+      return draft;
+    });
+  };
+
+  const updateDailyJournalNote = (date, value) => {
+    updateState((draft) => {
+      draft.dailyJournal = draft.dailyJournal || [];
+      const existing = draft.dailyJournal.find((item) => item.date === date);
+      if (existing) {
+        existing.note = value;
+      } else {
+        draft.dailyJournal.push({
+          id: crypto.randomUUID(),
+          date,
+          title: `Journal for ${formatLongDate(date)}`,
+          note: value,
+        });
+      }
+      return draft;
+    });
+  };
+
+  const updateDailyJournalEntry = (date, patch) => {
+    updateState((draft) => {
+      draft.dailyJournal = draft.dailyJournal || [];
+      const existing = draft.dailyJournal.find((item) => item.date === date);
+      if (existing) {
+        Object.assign(existing, patch);
+      } else {
+        draft.dailyJournal.push({
+          id: crypto.randomUUID(),
+          date,
+          title: patch.title || `Journal for ${formatLongDate(date)}`,
+          note: patch.note || '',
+        });
+      }
+      return draft;
+    });
   };
 
   const confirmClearSubjectWeeklyProgress = () => {
@@ -792,6 +882,7 @@ function App() {
             toggleWeeklyStudyCheck={toggleWeeklyStudyCheck}
             openStudyDurationModal={openStudyDurationModal}
             clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
+            addExtraStudyHours={addExtraStudyHours}
           />
         )}
         {activeView === 'Subjects' && (
@@ -840,6 +931,18 @@ function App() {
             addTask={addTask}
             addTopic={addTopic}
             scanStatus={scanStatus}
+          />
+        )}
+        {activeView === 'Logs' && (
+          <LogsView
+            studyBlocks={state.studyBlocks}
+            subjectsById={subjectsById}
+          />
+        )}
+        {activeView === 'Daily Log Journal' && (
+          <DailyNotesView
+            notes={state.dailyJournal}
+            updateDailyJournalEntry={updateDailyJournalEntry}
           />
         )}
         {activeView === 'Settings' && (
@@ -892,6 +995,8 @@ function Sidebar({ activeView, setActiveView, mobileNavOpen, setMobileNavOpen })
     ['Calendar', CalendarDays],
     ['Tasks', ListChecks],
     ['Upload PDFs', Upload],
+    ['Logs', Clock3],
+    ['Daily Log Journal', FileText],
     ['Settings', Settings],
   ];
   return (
@@ -1062,6 +1167,7 @@ function Dashboard({
   toggleWeeklyStudyCheck,
   openStudyDurationModal,
   clearSubjectWeeklyProgress,
+  addExtraStudyHours,
 }) {
   const showStarterCard = isUsingSampleData(subjects, tasks);
   return (
@@ -1116,6 +1222,7 @@ function Dashboard({
           toggleWeeklyStudyCheck={toggleWeeklyStudyCheck}
           openStudyDurationModal={openStudyDurationModal}
           clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
+          addExtraStudyHours={addExtraStudyHours}
         />
       </Panel>
       <Panel className="today-panel">
@@ -1296,7 +1403,7 @@ function WeeklyFocus({ data, subjects, subjectsById, addWeeklyFocusSubject, dele
   );
 }
 
-function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal, clearSubjectWeeklyProgress }) {
+function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal, clearSubjectWeeklyProgress, addExtraStudyHours }) {
   const hoursBySubject = Object.fromEntries(hours.map((item) => [item.subject.id, item.hours]));
   const checksBySubject = Object.fromEntries(checks.map((item) => [item.subjectId, item]));
   return (
@@ -1320,6 +1427,7 @@ function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyChe
             toggleWeeklyStudyCheck={toggleWeeklyStudyCheck}
             openStudyDurationModal={openStudyDurationModal}
             clearSubjectWeeklyProgress={clearSubjectWeeklyProgress}
+            addExtraStudyHours={addExtraStudyHours}
           />
         );
       })}
@@ -1327,7 +1435,7 @@ function SubjectHours({ subjects, hours, checks, weekStart, toggleWeeklyStudyChe
   );
 }
 
-function HourLogCard({ subject, hours, check, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal, clearSubjectWeeklyProgress }) {
+function HourLogCard({ subject, hours, check, weekStart, toggleWeeklyStudyCheck, openStudyDurationModal, clearSubjectWeeklyProgress, addExtraStudyHours }) {
   const handleSessionToggle = (field, checked) => {
     if (checked) {
       openStudyDurationModal(subject.id, weekStart, field);
@@ -1336,6 +1444,7 @@ function HourLogCard({ subject, hours, check, weekStart, toggleWeeklyStudyCheck,
     }
   };
   const progress = getStudyProgress(hours, DEFAULT_STUDY_GOAL_HOURS);
+  const bothSessionsComplete = Boolean(check?.studiedDone) && Boolean(check?.tasksChecked);
 
   return (
     <div className="hour-row">
@@ -1377,6 +1486,18 @@ function HourLogCard({ subject, hours, check, weekStart, toggleWeeklyStudyCheck,
       <div className="progress-track">
         <div style={{ width: `${progress}%`, background: subject.color }} />
       </div>
+      {bothSessionsComplete ? (
+        <div className="extra-hours-row">
+          <button
+            type="button"
+            className="mini-action save"
+            onClick={() => addExtraStudyHours(subject.id, weekStart)}
+          >
+            <Plus size={14} />
+            Add extra hours
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1487,7 +1608,8 @@ function SubjectGroup({ title, subjects, tasks, addTopic, studyBlocks, openSubje
 function SubjectCard({ subject, subjectTasks, done, addTopic, openSubjectModal, deleteSubject, studyBlocks, clearSubjectWeeklyProgress }) {
   const heatmap = buildSubjectHeatmap(subject.id, studyBlocks);
   const totalHours = heatmap.reduce((sum, day) => sum + day.hours, 0);
-  const weeklyHours = getSubjectWeeklyHours(subject.id, studyBlocks);
+  const progressSnapshot = getSubjectProgressSnapshot(subject.id, studyBlocks);
+  const weeklyHours = progressSnapshot.hours;
   const weeklyProgress = getStudyProgress(weeklyHours, DEFAULT_STUDY_GOAL_HOURS);
   const displayDescription = cleanSubjectDescription(subject.description);
   return (
@@ -1502,7 +1624,7 @@ function SubjectCard({ subject, subjectTasks, done, addTopic, openSubjectModal, 
           <button
             type="button"
             className="icon-mini reset-progress-icon"
-            onClick={() => clearSubjectWeeklyProgress(subject.id, getWeekStart(todayISO()))}
+            onClick={() => clearSubjectWeeklyProgress(subject.id, progressSnapshot.weekStart)}
             title={`Reset ${subject.name} progress`}
             aria-label={`Reset ${subject.name} progress`}
           >
@@ -1555,6 +1677,241 @@ function SubjectHeatmap({ days }) {
           title={`${formatDate(day.date)}: ${day.hours.toFixed(1)}h studied • ${day.progress}% completed`}
         />
       ))}
+    </div>
+  );
+}
+
+function LogsView({ studyBlocks, subjectsById }) {
+  const weeks = buildWeeklyLogs(studyBlocks, subjectsById);
+  return (
+    <section className="content-stack">
+      <Panel>
+        <p className="eyebrow">Weekly Logs</p>
+        <h2>Days and subjects studied</h2>
+        <p className="muted">Open each week to see the days you studied and the subjects you touched that day.</p>
+      </Panel>
+      {weeks.length ? weeks.map((week) => (
+        <details className="log-week-card" key={week.weekStart} open={week.weekStart === getWeekStart(todayISO())}>
+          <summary className="log-week-summary">
+            <div>
+              <strong>{week.label}</strong>
+              <small>{week.totalHours.toFixed(1)} hours studied</small>
+            </div>
+            <span className="status-chip">{week.days.length} days logged</span>
+          </summary>
+          <div className="log-days">
+            {week.days.map((day) => (
+              <div className="log-day-card" key={day.date}>
+                <div className="log-day-head">
+                  <div>
+                    <strong>{formatLongDate(day.date)}</strong>
+                  </div>
+                </div>
+                <div className="log-subject-list">
+                  {day.subjects.map((item) => (
+                    <div className="log-subject-note" key={`${day.date}-${item.subject.id}`}>
+                      <div className="log-subject-title">
+                        <span className="subject-dot small" style={{ background: item.subject.color }} />
+                        <strong>{item.subject.name}</strong>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )) : <EmptyState text="No study logs yet. Complete a study session on the dashboard to start filling this view." />}
+    </section>
+  );
+}
+
+function DailyNotesView({ notes, updateDailyJournalEntry }) {
+  const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [previewEntry, setPreviewEntry] = useState(null);
+  const editorRef = useRef(null);
+  const currentEntry = notes.find((item) => item.date === selectedDate) || null;
+  const currentTitle = currentEntry?.title || `Journal for ${formatLongDate(selectedDate)}`;
+  const currentNote = currentEntry?.note || '';
+  const [draftTitle, setDraftTitle] = useState(currentTitle);
+  const [draftNote, setDraftNote] = useState(currentNote);
+  const recentNotes = [...notes].sort((a, b) => b.date.localeCompare(a.date));
+  const hasUnsavedChanges = draftNote !== currentNote || draftTitle !== currentTitle;
+  const wordCount = getWordCount(draftNote);
+
+  React.useEffect(() => {
+    setDraftTitle(currentTitle);
+    setDraftNote(currentNote);
+  }, [currentNote, currentTitle, selectedDate]);
+
+  React.useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== draftNote) {
+      editorRef.current.innerHTML = draftNote;
+    }
+  }, [draftNote, selectedDate]);
+
+  const saveNote = () => {
+    updateDailyJournalEntry(selectedDate, {
+      title: draftTitle.trim() || `Journal for ${formatLongDate(selectedDate)}`,
+      note: draftNote,
+    });
+  };
+
+  const applyFormat = (command, value = null) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    document.execCommand(command, false, value);
+    setDraftNote(editorRef.current.innerHTML);
+  };
+
+  const handleFontSizeChange = (event) => {
+    const value = event.target.value;
+    if (!value) return;
+    applyFormat('fontSize', value);
+  };
+
+  return (
+    <section className="content-stack">
+      <Panel className="docs-editor-panel">
+        <p className="eyebrow">Daily Log Journal</p>
+        <h2>Your daily journal</h2>
+        <p className="muted">A clean little space to save whatever happened today, like your own study doc library.</p>
+        <div className="doc-summary-row">
+          <div className="doc-summary-pill">
+            <FileText size={15} />
+            <span>{formatLongDate(selectedDate)}</span>
+          </div>
+          <div className="doc-summary-pill">
+            <span>{wordCount} words</span>
+          </div>
+          <div className={`doc-summary-pill ${hasUnsavedChanges ? 'live' : ''}`}>
+            <span>{hasUnsavedChanges ? 'Editing' : 'Saved'}</span>
+          </div>
+        </div>
+        <div className="daily-doc-editor">
+          <div className="daily-doc-toolbar">
+            <div>
+              <strong>{formatLongDate(selectedDate)}</strong>
+              <span>{hasUnsavedChanges ? 'Unsaved changes' : 'Saved in your browser'}</span>
+            </div>
+            <div className="daily-doc-actions">
+              <div className="editor-toolbar" aria-label="Document formatting">
+                <button type="button" className="toolbar-button" onClick={() => applyFormat('bold')} aria-label="Bold">
+                  <Bold size={15} />
+                </button>
+                <button type="button" className="toolbar-button" onClick={() => applyFormat('italic')} aria-label="Italic">
+                  <Italic size={15} />
+                </button>
+                <button type="button" className="toolbar-button" onClick={() => applyFormat('underline')} aria-label="Underline">
+                  <Underline size={15} />
+                </button>
+                <label className="toolbar-size" aria-label="Font size">
+                  <Type size={15} />
+                  <select defaultValue="" onChange={handleFontSizeChange}>
+                    <option value="" disabled>Size</option>
+                    <option value="2">Small</option>
+                    <option value="3">Normal</option>
+                    <option value="5">Large</option>
+                  </select>
+                </label>
+              </div>
+              <label className="compact-date-field">
+                <span>Date</span>
+                <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+              </label>
+              <button type="button" className="primary-button" onClick={saveNote} disabled={!hasUnsavedChanges}>
+                Save note
+              </button>
+            </div>
+          </div>
+          <div className="daily-doc-surface">
+            <label className="journal-title-field">
+              <span>Title</span>
+              <input
+                type="text"
+                value={draftTitle}
+                onChange={(event) => setDraftTitle(event.target.value)}
+                placeholder="Give your journal a title"
+              />
+            </label>
+            <div className="journal-editor-wrap">
+              <span>Document</span>
+              <div
+                ref={editorRef}
+                className="journal-editor"
+                contentEditable
+                suppressContentEditableWarning
+                data-placeholder="Write anything for today, cuzzo..."
+                onInput={(event) => setDraftNote(event.currentTarget.innerHTML)}
+              />
+            </div>
+          </div>
+        </div>
+      </Panel>
+      <Panel className="docs-library-panel">
+        <p className="eyebrow">Daily Log Journal</p>
+        <h2>Saved journal entries</h2>
+        <p className="muted">Tap any note to open it back up in the editor.</p>
+        <div className="daily-doc-grid">
+          {recentNotes.length ? recentNotes.map((item) => (
+            <button
+              key={item.date}
+              className={`daily-doc-card ${item.date === selectedDate ? 'active' : ''}`}
+              onClick={() => setPreviewEntry(item)}
+            >
+              <div className="daily-doc-preview">
+                <div className="daily-doc-lines">
+                  {getNotePreviewLines(item.note).map((line, index) => (
+                    <p key={`${item.date}-${index}`}>{line}</p>
+                  ))}
+                </div>
+              </div>
+              <div className="daily-doc-meta">
+                <strong>{getJournalTitle(item)}</strong>
+                <span>{formatLongDate(item.date)}</span>
+              </div>
+            </button>
+          )) : <EmptyState text="No journal entries yet. Start with today and keep your streak going." />}
+        </div>
+      </Panel>
+      {previewEntry ? (
+        <JournalPreviewModal
+          entry={previewEntry}
+          onClose={() => setPreviewEntry(null)}
+          onOpenEditor={() => {
+            setSelectedDate(previewEntry.date);
+            setPreviewEntry(null);
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function JournalPreviewModal({ entry, onClose, onOpenEditor }) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="journal-preview-modal" role="dialog" aria-modal="true" aria-labelledby="journal-preview-title">
+        <div className="journal-preview-head">
+          <div>
+            <p className="eyebrow">Daily Log Journal</p>
+            <h2 id="journal-preview-title">{getJournalTitle(entry)}</h2>
+            <p className="muted">{formatLongDate(entry.date)} · {getWordCount(entry.note)} words saved</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close journal preview">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="journal-preview-doc">
+          <div className="journal-preview-page">
+            {entry.note ? <div dangerouslySetInnerHTML={{ __html: entry.note }} /> : <p>No note written for this day yet.</p>}
+          </div>
+        </div>
+        <div className="journal-preview-actions">
+          <button type="button" className="ghost-button" onClick={onClose}>Close</button>
+          <button type="button" className="primary-button" onClick={onOpenEditor}>Open in editor</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2675,12 +3032,129 @@ function getSubjectWeeklyHours(subjectId, studyBlocks) {
   return minutes / 60;
 }
 
+function getSubjectProgressSnapshot(subjectId, studyBlocks) {
+  const currentWeekStart = getWeekStart(todayISO());
+  const weeklyMinutes = new Map();
+
+  studyBlocks
+    .filter((block) => block.subjectId === subjectId && (block.minutes || 0) > 0)
+    .forEach((block) => {
+      const weekStart = getWeekStart(block.date);
+      weeklyMinutes.set(weekStart, (weeklyMinutes.get(weekStart) || 0) + (block.minutes || 0));
+    });
+
+  if (weeklyMinutes.has(currentWeekStart)) {
+    return {
+      weekStart: currentWeekStart,
+      hours: (weeklyMinutes.get(currentWeekStart) || 0) / 60,
+    };
+  }
+
+  const latestWeekStart = [...weeklyMinutes.keys()].sort((a, b) => b.localeCompare(a))[0] || currentWeekStart;
+  return {
+    weekStart: latestWeekStart,
+    hours: (weeklyMinutes.get(latestWeekStart) || 0) / 60,
+  };
+}
+
 function isUsingSampleData(subjects, tasks) {
   const sampleSubjectIds = ['bio', 'calc', 'hist', 'web'];
   const sampleTaskIds = ['task-1', 'task-2', 'task-3', 'task-4'];
   const subjectMatches = sampleSubjectIds.every((id) => subjects.some((subject) => subject.id === id));
   const taskMatches = sampleTaskIds.every((id) => tasks.some((task) => task.id === id));
   return subjectMatches && taskMatches;
+}
+
+function buildWeeklyLogs(studyBlocks, subjectsById) {
+  const studyOnly = studyBlocks
+    .filter((block) => (block.minutes || 0) > 0)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const weekMap = new Map();
+
+  studyOnly.forEach((block) => {
+    const weekStart = getWeekStart(block.date);
+    if (!weekMap.has(weekStart)) {
+      weekMap.set(weekStart, { weekStart, totalMinutes: 0, days: new Map() });
+    }
+    const week = weekMap.get(weekStart);
+    week.totalMinutes += block.minutes || 0;
+
+    if (!week.days.has(block.date)) {
+      week.days.set(block.date, { date: block.date, totalMinutes: 0, subjects: new Map() });
+    }
+    const day = week.days.get(block.date);
+    day.totalMinutes += block.minutes || 0;
+
+    const subject = subjectsById[block.subjectId];
+    if (!subject) return;
+    if (!day.subjects.has(block.subjectId)) {
+      day.subjects.set(block.subjectId, {
+        subject,
+        minutes: 0,
+      });
+    }
+    const subjectEntry = day.subjects.get(block.subjectId);
+    subjectEntry.minutes += block.minutes || 0;
+  });
+
+  return [...weekMap.values()]
+    .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
+    .map((week) => ({
+      weekStart: week.weekStart,
+      label: `${formatLongDate(week.weekStart)} - ${formatLongDate(addDays(week.weekStart, 6))}`,
+      totalHours: week.totalMinutes / 60,
+      days: [...week.days.values()]
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .map((day) => ({
+          date: day.date,
+          totalHours: day.totalMinutes / 60,
+          subjects: [...day.subjects.values()].map((item) => ({
+            subject: item.subject,
+            hours: item.minutes / 60,
+          })),
+        })),
+    }));
+}
+
+function getNotePreviewLines(note) {
+  const clean = getJournalPlainText(note);
+  if (!clean) return ['Start writing here...', 'Your day log shows up in this preview.', 'Keep it simple and save it.'];
+  const collapsed = clean.replace(/\s+/g, ' ');
+  const slice = collapsed.slice(0, 150);
+  const lines = [];
+  for (let index = 0; index < slice.length && lines.length < 6; index += 26) {
+    lines.push(slice.slice(index, index + 26));
+  }
+  return lines;
+}
+
+function getNoteCardLabel(note) {
+  const clean = getJournalPlainText(note);
+  if (!clean) return 'Empty note';
+  const words = clean.split(/\s+/).length;
+  return `${words} words saved`;
+}
+
+function getWordCount(note) {
+  const clean = getJournalPlainText(note);
+  if (!clean) return 0;
+  return clean.split(/\s+/).length;
+}
+
+function getJournalPlainText(note) {
+  const html = (note || '').trim();
+  if (!html) return '';
+  return html
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/p>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getJournalTitle(entry) {
+  return entry?.title?.trim() || `Journal for ${formatLongDate(entry?.date || todayISO())}`;
 }
 
 function groupSubjectsByType(subjects) {
